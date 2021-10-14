@@ -25,13 +25,16 @@ public:
   Eigen::Vector7d q_desired_slave_;
   Eigen::Vector7d qd_desired_slave_;
 
+  Eigen::Vector7d tau_feedback_desired_master_;
+
   AvatarActionServer(std::string name, ros::NodeHandle &nh, 
                           std::map<std::string, std::shared_ptr<FrankaModelUpdater> > &mu);
                           
   bool compute(ros::Time time) override;
   bool computeArm(ros::Time time, FrankaModelUpdater &arm, const std::string & arm_name);
 
-  bool setSlaveTarget(FrankaModelUpdater &arm);
+  bool setSlaveTarget(FrankaModelUpdater &master_arm);
+  bool setMasterTarget(FrankaModelUpdater &slave_arm);
 
   bool slave_on_;
   bool master_on_;

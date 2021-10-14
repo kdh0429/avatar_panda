@@ -34,6 +34,8 @@ AvatarActionServer::AvatarActionServer(std::string name, ros::NodeHandle &nh,
     arm_gain_map_[iter->first] = std::make_pair(kp,kv);
   }
 
+  tau_feedback_desired_master_.setZero();
+
   if (slave_on_ && master_on_)
     control_running_ = true;
 
@@ -61,6 +63,11 @@ bool AvatarActionServer::compute(ros::Time time)
     {
       setSlaveTarget(*mu_[arm.first]);
     }
+    else if (arm.first == SLAVE)
+    {
+      setMasterTarget(*mu_[arm.first]);
+    }
+
     if (arm.second == true)
     {
       computeArm(time, *mu_[arm.first], arm.first);
@@ -85,7 +92,7 @@ bool AvatarActionServer::computeArm(ros::Time time, FrankaModelUpdater &arm, con
   }
   else if (arm_name == MASTER)
   {
-    desired_torque.setZero();
+    desired_torque = tau_feedback_desired_master_;
   }
   
   if (++ print_count_ > iter_per_print_)
@@ -111,13 +118,21 @@ bool AvatarActionServer::computeArm(ros::Time time, FrankaModelUpdater &arm, con
   return true;
 }
 
-bool AvatarActionServer::setSlaveTarget(FrankaModelUpdater &arm)
+bool AvatarActionServer::setSlaveTarget(FrankaModelUpdater &master_arm)
 {
-  q_desired_slave_ = arm.q_;
-  qd_desired_slave_ = arm.qd_;
+  q_desired_slave_ = master_arm.q_;
+  qd_desired_slave_ = master_arm.qd_;
 
   return true;
 }
+
+bool AvatarActionServer::setMasterTarget(FrankaModelUpdater &slave_arm)
+{
+  tau_feedback_desired_master_ = slave_arm.tau_ext_filtered_;
+
+  return true;
+}
+
 
 
 bool AvatarActionServer::setSlaveGain(avatar_msgs::SetTrajectoryFollowerGain::Request  &req,
