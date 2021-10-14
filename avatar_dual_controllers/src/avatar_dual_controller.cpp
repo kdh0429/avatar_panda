@@ -131,8 +131,8 @@ bool AvatarDualController::init(hardware_interface::RobotHW* robot_hw,
   avatar_action_server_ = std::make_unique<AvatarActionServer>
   ("/avatar_dual_controller/avatar_control", node_handle, arms_data_);
 
-  idle_control_server_ = std::make_unique<IdleControlServer>
-  ("/avatar_dual_controller/idle_control", node_handle, arms_data_);
+  // idle_control_server_ = std::make_unique<IdleControlServer>
+  // ("/avatar_dual_controller/idle_control", node_handle, arms_data_);
 
   return left_success && right_success;
 }
@@ -151,7 +151,6 @@ void AvatarDualController::startingArm(FrankaModelUpdater& arm_data) {
   Eigen::Map<Eigen::Matrix<double, 7, 1>> q_initial(initial_state.q.data());
   Eigen::Isometry3d initial_transform(Eigen::Matrix4d::Map(initial_state.O_T_EE.data()));
   sb_.reset();
-  // debug_file_td_ << "update\tmodel\tcompute" << std::endl;
 }
 
 void AvatarDualController::starting(const ros::Time& time) {
@@ -178,8 +177,8 @@ void AvatarDualController::update(const ros::Time& time, const ros::Duration& pe
   t[ctr_index++] = sb_.elapsedAndReset();
 
   // add normal action server above ----------
-  idle_control_server_->compute(time);
-  t[ctr_index++] = sb_.elapsedAndReset();
+  // idle_control_server_->compute(time);
+  // t[ctr_index++] = sb_.elapsedAndReset();
 
 
   for(int i=0; i<ctr_index; ++i)
