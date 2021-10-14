@@ -1,0 +1,25 @@
+<library path="lib/libavatar_dual_controllers">\
+  <class name="avatar_dual_controllers/AvatarDualController" type="avatar_dual_controllers::AvatarDualController" base_class_type="controller_interface::ControllerBase">
+    <description>
+      A controller that executes a short motion based on joint velocities to demonstrate correct usage
+    </description>
+  </class>
+</library>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
