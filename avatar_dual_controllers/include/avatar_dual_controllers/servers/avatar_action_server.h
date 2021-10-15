@@ -33,11 +33,20 @@ public:
   bool compute(ros::Time time) override;
   bool computeArm(ros::Time time, FrankaModelUpdater &arm, const std::string & arm_name);
 
-  bool setSlaveTarget(FrankaModelUpdater &master_arm);
-  bool setMasterTarget(FrankaModelUpdater &slave_arm);
+  bool setSlaveTarget(ros::Time time, FrankaModelUpdater &master_arm);
+  bool setMasterTarget(ros::Time time, FrankaModelUpdater &slave_arm);
 
   bool slave_on_;
   bool master_on_;
+
+  bool master_first_compute_=true;
+  bool slave_first_compute_=true;
+
+  double init_time_;
+  Eigen::Vector7d init_master_q_;
+  Eigen::Vector7d init_slave_q_;
+  Eigen::Vector7d init_master_qd_;
+  Eigen::Vector7d init_slave_qd_;
 
   ros::ServiceServer server_ ;
 

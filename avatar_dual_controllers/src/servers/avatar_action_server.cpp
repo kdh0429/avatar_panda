@@ -21,6 +21,8 @@ AvatarActionServer::AvatarActionServer(std::string name, ros::NodeHandle &nh,
     {
       kp << 800, 800, 800, 800, 500, 400, 300;
       kv << 10, 10, 10, 10, 5, 5, 3;
+      // kp << 400, 400, 400, 400, 300, 200, 100;
+      // kv << 5, 5, 5, 5, 2, 2, 1;
       active_arms_[iter->first] = true;
       slave_on_ = true;
     }
@@ -57,15 +59,29 @@ bool AvatarActionServer::compute(ros::Time time)
   if (!control_running_)
     return false;
 
+
   for (auto & arm : active_arms_)
   {
     if (arm.first == MASTER)
     {
-      setSlaveTarget(*mu_[arm.first]);
+      if (master_first_compute_)
+      {
+        init_time_ = time.toSec();
+        init_master_q_ = mu_[arm.first]->q_;
+        init_master_qd_ = mu_[arm.first]->qd_;
+        master_first_compute_ = false;
+      }
+      setSlaveTarget(time, *mu_[arm.first]);
     }
     else if (arm.first == SLAVE)
     {
-      setMasterTarget(*mu_[arm.first]);
+      if (slave_first_compute_)
+      {
+        init_slave_q_ = mu_[arm.first]->q_;
+        init_slave_qd_ = mu_[arm.first]->qd_;
+        slave_first_compute_ = false;
+      }
+      setMasterTarget(time, *mu_[arm.first]);
     }
 
     if (arm.second == true)
@@ -92,7 +108,8 @@ bool AvatarActionServer::computeArm(ros::Time time, FrankaModelUpdater &arm, con
   }
   else if (arm_name == MASTER)
   {
-    desired_torque = tau_feedback_desired_master_;
+    desired_torque = -tau_feedback_desired_master_;
+    // desired_torque.setZero();
   }
   
   if (++ print_count_ > iter_per_print_)
@@ -118,15 +135,30 @@ bool AvatarActionServer::computeArm(ros::Time time, FrankaModelUpdater &arm, con
   return true;
 }
 
-bool AvatarActionServer::setSlaveTarget(FrankaModelUpdater &master_arm)
+bool AvatarActionServer::setSlaveTarget(ros::Time time, FrankaModelUpdater &master_arm)
 {
-  q_desired_slave_ = master_arm.q_;
-  qd_desired_slave_ = master_arm.qd_;
+  if (time.toSec() < init_time_ + 5.0)
+  {
+    for (int i = 0; i < 7; i++)
+    {
+      q_desired_slave_(i) = dyros_math::cubic(time.toSec(), init_time_, init_time_ + 5.0, init_slave_q_(i), master_arm.q_(i), 0.0, 0.0);
+      qd_desired_slave_(i) = dyros_math::cubic(time.toSec(), init_time_, init_time_ + 5.0, init_slave_qd_(i), master_arm.qd_(i), 0.0, 0.0);
+    }      
+  }
+  else
+  {
+    q_desired_slave_ = master_arm.q_;
+    qd_desired_slave_ = master_arm.qd_;
+  }
+
+  // std::cout << "q des slave: " << q_desired_slave_.transpose() << std::endl;
+  // std::cout << "q init master: " << init_master_q_.transpose() << std::endl;
+  // std::cout << "q init slave: " << init_slave_q_.transpose() << std::endl;
 
   return true;
 }
 
-bool AvatarActionServer::setMasterTarget(FrankaModelUpdater &slave_arm)
+bool AvatarActionServer::setMasterTarget(ros::Time time, FrankaModelUpdater &slave_arm)
 {
   tau_feedback_desired_master_ = slave_arm.tau_ext_filtered_;
 
