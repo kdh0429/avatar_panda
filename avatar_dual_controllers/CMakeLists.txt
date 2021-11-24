@@ -72,6 +72,7 @@ include_directories(
 add_library(avatar_controller_common_lib
   src/servers/idle_control_server.cpp
   src/servers/avatar_action_server.cpp
+  src/servers/residual_action_server.cpp
   src/model/franka_model_updater.cpp
   src/utils/control/peg_in_hole_base.cpp
   src/utils/dyros_math.cpp
