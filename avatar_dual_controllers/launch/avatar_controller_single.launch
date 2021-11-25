@@ -29,7 +29,5 @@
 
   </group>
 
-  <param name="robot_description" command="$(find xacro)/xacro.py '$(find avatar_env_description)/robots/avatar_env.urdf.xacro'" />
-  <include file="$(find avatar_moveit_config)/launch/planning_context.launch"/>
-  
+  <param name="robot_description" command="$(find xacro)/xacro.py '$(find avatar_env_description)/robots/avatar_env.urdf.xacro'" />  
 </launch>
