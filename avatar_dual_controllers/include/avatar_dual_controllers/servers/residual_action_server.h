@@ -32,6 +32,7 @@ public:
   Eigen::Vector7d q_target_;
   Eigen::Vector7d q_desired_;
   Eigen::Vector7d qd_desired_;
+  Eigen::Vector7d qdd_desired_;
 
   int num_dof_ = 7;
 
@@ -41,7 +42,8 @@ public:
   bool compute(ros::Time time) override;
   bool computeArm(ros::Time time, FrankaModelUpdater &arm, const std::string & arm_name);
 
-  bool setTarget(ros::Time time);
+  bool setRandomTarget(ros::Time time);
+  bool setInitTarget(ros::Time time);
 
   void initMoveit();
   void setMoveitObstables();
@@ -70,6 +72,7 @@ public:
   Eigen::VectorXd q_limit_u_;
   Eigen::VectorXd q_limit_l_;
 
+  double cur_time_ = 0.0;
   double traj_init_time_ = 0.0;
   double traj_duration_ = 0.0;
   int total_waypoints_;

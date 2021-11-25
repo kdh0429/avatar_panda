@@ -71,7 +71,7 @@ void ResidualActionServer::initMoveit()
 
     const robot_state::JointModelGroup* joint_model_group = move_group_.getCurrentState()->getJointModelGroup(PLANNING_GROUP);
 
-    move_group_.setMaxVelocityScalingFactor(1.0);
+    move_group_.setMaxVelocityScalingFactor(0.1);
 
 
     setMoveitObstables();
@@ -188,7 +188,11 @@ void ResidualActionServer::generateRandTraj()
           next_traj_prepared_ = true;
 
           if (traj_num_ == 0)
+          {
+            random_plan_ = random_plan_next_;
+            traj_init_time_ = init_time_;
             init_traj_prepared_ = true;
+          }
 
           traj_num_++;
           std::cout<< "Trajectory " << traj_num_ << " prepared"<<std::endl;
@@ -206,15 +210,31 @@ bool ResidualActionServer::compute(ros::Time time)
   {
     if (arm.first == RobotName)
     {
+      cur_time_ = time.toSec();
+
       if (first_compute_)
       {
         init_time_ = time.toSec();
         init_q_ = mu_[arm.first]->q_;
         init_qd_ = mu_[arm.first]->qd_;
+
         first_compute_ = false;
       }
+
       generateRandTraj();
-      setTarget(time);    
+          
+      if (cur_time_ < init_time_ + 5.0)
+      {
+        setInitTarget(time);
+      }
+      else if (init_traj_prepared_)
+      {
+        setRandomTarget(time);  
+      }   
+      else
+      {
+        setInitTarget(time);
+      }
       
       if (arm.second == true)
       {
@@ -261,7 +281,7 @@ bool ResidualActionServer::computeArm(ros::Time time, FrankaModelUpdater &arm, c
   return true;
 }
 
-bool ResidualActionServer::setTarget(ros::Time time)
+bool ResidualActionServer::setInitTarget(ros::Time time)
 {
   q_target_ << 0, 0, 0, -90*DEG2RAD, 0, 90*DEG2RAD, 0;
 
@@ -270,6 +290,59 @@ bool ResidualActionServer::setTarget(ros::Time time)
     q_desired_(i) = dyros_math::cubic(time.toSec(), init_time_, init_time_ + 5.0, init_q_(i), q_target_(i), 0.0, 0.0);
     qd_desired_(i) = dyros_math::cubic(time.toSec(), init_time_, init_time_ + 5.0, init_qd_(i), q_target_(i), 0.0, 0.0);
   }     
+}
+bool ResidualActionServer::setRandomTarget(ros::Time time)
+{
+  if (cur_time_ >= traj_init_time_ + traj_duration_ + 1.0)
+  {   
+    if (next_traj_prepared_)
+    {
+      random_plan_ = random_plan_next_;
+      cur_waypoint_ = 0;
+      traj_init_time_ = cur_time_;//ros::Time::now().toSec();
+      total_waypoints_ = random_plan_.trajectory_.joint_trajectory.points.size();
+      traj_duration_ = random_plan_.trajectory_.joint_trajectory.points[total_waypoints_-1].time_from_start.toSec();
+
+      next_traj_prepared_ = false; 
+      std::vector<double> way = random_plan_.trajectory_.joint_trajectory.points[total_waypoints_-1].positions;
+      std::cout<<"New Trajectory!"<< std::endl;
+      std::cout<<"Total Waypoint: "<< total_waypoints_ << std::endl;
+      std::cout << "Init Pose: " << q_init_plan_[0] << " " << q_init_plan_[1] << " " << q_init_plan_[2] << " " << q_init_plan_[3] << " " << q_init_plan_[4] << " " << q_init_plan_[5] << " " << q_init_plan_[6] << std::endl;
+      std::cout << "Target Pose: " << q_target_plan_[0] << " " << q_target_plan_[1] << " " << q_target_plan_[2] << " " << q_target_plan_[3] << " " << q_target_plan_[4] << " " << q_target_plan_[5] << " " << q_target_plan_[6] << std::endl;
+      std::cout<<"Trajetory Duration: " << traj_duration_ << std::endl << std::endl;
+    }
+  }
+  else if (cur_time_ >= traj_init_time_ + traj_duration_)
+  {
+      // Rest
+  }
+  else if (cur_time_ >= traj_init_time_ + random_plan_.trajectory_.joint_trajectory.points[cur_waypoint_+1].time_from_start.toSec())
+  {
+      if (cur_waypoint_ < total_waypoints_-2)
+          cur_waypoint_++;
+  }
+  
+  double way_point_start_time = traj_init_time_ + random_plan_.trajectory_.joint_trajectory.points[cur_waypoint_].time_from_start.toSec();
+  double way_point_end_time = traj_init_time_ + random_plan_.trajectory_.joint_trajectory.points[cur_waypoint_+1].time_from_start.toSec();
+
+  std::vector<Eigen::Vector3d> traj;
+  traj.resize(num_dof_);
+
+  for (int i = 0; i < num_dof_; i++)
+  {
+      double init_q = random_plan_.trajectory_.joint_trajectory.points[cur_waypoint_].positions[i];
+      double init_q_dot = random_plan_.trajectory_.joint_trajectory.points[cur_waypoint_].velocities[i];
+      double init_q_ddot = random_plan_.trajectory_.joint_trajectory.points[cur_waypoint_].accelerations[i];
+      double target_q = random_plan_.trajectory_.joint_trajectory.points[cur_waypoint_+1].positions[i];
+      double target_q_dot = random_plan_.trajectory_.joint_trajectory.points[cur_waypoint_+1].velocities[i];
+      double target_q_ddot = random_plan_.trajectory_.joint_trajectory.points[cur_waypoint_+1].accelerations[i];
+
+      traj[i] = dyros_math::quinticSpline(cur_time_, way_point_start_time, way_point_end_time, init_q, init_q_dot, init_q_ddot, target_q, target_q_dot, target_q_ddot);
+
+      q_desired_(i) = traj[i](0);
+      qd_desired_(i) = traj[i](1);
+      qdd_desired_(i) = traj[i](2);
+  }
 
   return true;
 }
