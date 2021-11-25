@@ -4,6 +4,11 @@
       A controller that executes a short motion based on joint velocities to demonstrate correct usage
     </description>
   </class>
+  <class name="avatar_dual_controllers/AvatarSingleController" type="avatar_dual_controllers::AvatarSingleController" base_class_type="controller_interface::ControllerBase">
+    <description>
+      A controller that executes a short motion based on joint velocities to demonstrate correct usage
+    </description>
+  </class>
 </library>
 
 

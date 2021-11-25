@@ -7,7 +7,7 @@
   <arg name="rqt" default="false"/>
   <arg name="robot_ips" default="{panda_right/robot_ip: 172.16.3.3}"/>
 
-  <arg name="hw_config_file" default="$(find avatar_dual_controllers)/config/franka_combined_control_single_node.yaml"/>
+  <arg name="hw_config_file" default="$(find avatar_dual_controllers)/config/franka_combined_control_node_single.yaml"/>
   <arg name="controllers_file" default="$(find avatar_dual_controllers)/config/default_combined_controllers_single.yaml"/>
 
   <arg name="controllers_to_start" default="panda_right_state_controller"/>

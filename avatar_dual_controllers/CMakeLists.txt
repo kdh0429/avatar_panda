@@ -81,6 +81,7 @@ add_library(avatar_controller_common_lib
 
 add_library(${PROJECT_NAME}
   src/avatar_dual_controller.cpp
+  src/avatar_single_controller.cpp
  )
 
 

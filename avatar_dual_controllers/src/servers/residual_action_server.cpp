@@ -81,6 +81,7 @@ bool ResidualActionServer::computeArm(ros::Time time, FrankaModelUpdater &arm, c
   kv = arm_gain_map_[arm_name].second.asDiagonal();
 
   desired_torque = (kp*(q_desired_ - arm.q_) + kv*(qd_desired_ - arm.qd_)) + arm.coriolis_;
+  // desired_torque.setZero();
 
   if (++ print_count_ > iter_per_print_)
   {
