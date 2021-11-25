@@ -1,7 +1,7 @@
 <?xml version="1.0" ?>
 <launch>
 
-  <arg name="robot" default="$(find avatar_env_description)/robots/avatar_env.urdf.xacro"/>
+  <arg name="robot" default="$(find avatar_env_description)/robots/avatar_env_single.urdf.xacro"/>
   <arg name="robot_id" default="panda_single"/>
   <arg name="rviz" default="false"/>
   <arg name="rqt" default="false"/>
@@ -29,5 +29,5 @@
 
   </group>
 
-  <param name="robot_description" command="$(find xacro)/xacro.py '$(find avatar_env_description)/robots/avatar_env.urdf.xacro'" />  
+  <param name="robot_description" command="$(find xacro)/xacro.py '$(find avatar_env_description)/robots/avatar_env_single.urdf.xacro'" />  
 </launch>
