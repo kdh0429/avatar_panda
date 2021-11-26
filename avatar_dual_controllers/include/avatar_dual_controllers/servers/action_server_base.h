@@ -49,10 +49,10 @@ class ActionServerBase
       const auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         now.time_since_epoch()) % 1000;
       std::stringstream ss;
-      ss << prefix << action_name_ << '_'
-         << std::put_time(std::localtime(&now_time_t), "%Y-%m-%d %a %T")
-         << '.' << std::setfill('0') << std::setw(3) << now_ms.count() << ".txt";
-        // std::cout << "[sss]: " << ss.str() << std::endl;
+      // ss << prefix << action_name_ << '_'
+      //    << std::put_time(std::localtime(&now_time_t), "%Y-%m-%d %a %T")
+      //    << '.' << std::setfill('0') << std::setw(3) << now_ms.count() << ".txt";
+      ss << prefix << ".txt";
       debug_file_.open(ss.str());
     }
 

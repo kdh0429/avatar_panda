@@ -94,7 +94,7 @@ bool AvatarSingleController::init(hardware_interface::RobotHW* robot_hw,
   bool right_success = initArm(robot_hw, right_arm_id_, right_joint_names);
 
   residual_action_server_ = std::make_unique<ResidualActionServer>
-  ("/avatar_dual_controller/residual_control", node_handle, arms_data_);
+  ("/avatar_dual_controllers/residual_control", node_handle, arms_data_);
 
   // idle_control_server_ = std::make_unique<IdleControlServer>
   // ("/avatar_dual_controller/idle_control", node_handle, arms_data_);

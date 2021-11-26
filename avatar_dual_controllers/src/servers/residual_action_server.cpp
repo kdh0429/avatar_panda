@@ -35,6 +35,8 @@ ResidualActionServer::ResidualActionServer(std::string name, ros::NodeHandle &nh
   }
 
   server_  = nh_.advertiseService(name + "_gain_set", &ResidualActionServer::setGain, this);
+
+  openDebugFile("/home/dyros21/avatar_panda/random_free");
 }
 
 void ResidualActionServer::goalCallback()
@@ -263,16 +265,17 @@ bool ResidualActionServer::computeArm(ros::Time time, FrankaModelUpdater &arm, c
 
   if (++ print_count_ > iter_per_print_)
   {
-    Eigen::IOFormat tab_format(Eigen::FullPrecision, 0, "\t", "\n");
-    debug_file_.precision(std::numeric_limits< double >::digits10);
+    debug_file_ << std::fixed << std::setprecision(8);
+    Eigen::IOFormat tab_format(Eigen::StreamPrecision, 0, "\t", "\n");
+    // debug_file_.precision(std::numeric_limits< double >::digits10);
     if (debug_file_.is_open())
     {
-      debug_file_ << arm.arm_name_ << '\t' 
-            << time.toSec() << '\t' 
+      debug_file_ << time.toSec() - init_time_ << '\t' 
             << arm.q_.transpose().format(tab_format) << '\t'
             << arm.qd_.transpose().format(tab_format) << '\t' 
+            << arm.tau_measured_.transpose().format(tab_format) << '\t' 
+            << arm.tau_desired_read_.transpose().format(tab_format) << '\t' 
             << arm.tau_ext_filtered_.transpose().format(tab_format) << '\t' 
-            << arm.mob_torque_.transpose().format(tab_format) << '\t' 
             << q_desired_.transpose().format(tab_format) << '\t' 
             << qd_desired_.transpose().format(tab_format)
             << std::endl;
