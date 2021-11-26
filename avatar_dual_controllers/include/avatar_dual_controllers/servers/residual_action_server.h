@@ -79,8 +79,11 @@ public:
   int cur_waypoint_ = 0;
   int traj_num_ = 0;
 
+  bool init_traj_started_ = false;
   bool init_traj_prepared_ = false;
   bool next_traj_prepared_ = false;
+
+  int plan_loop_cnt_ = 0;
 
 private:
   bool setGain(avatar_msgs::SetTrajectoryFollowerGain::Request  &req,
