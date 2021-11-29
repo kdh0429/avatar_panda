@@ -12,6 +12,8 @@
 #include <moveit_visual_tools/moveit_visual_tools.h>
 #include <random>
 
+#include <std_msgs/Float32MultiArray.h>
+
 #define RobotName "panda_right"
 
 using namespace dyros_math;
@@ -49,6 +51,14 @@ public:
   void setMoveitObstables();
   void generateRandTraj();
 
+  void loadNetwork();
+  void writeBuffer(FrankaModelUpdater &arm);
+  void computeBackwardDynamicsModel();
+  void computeTrainedModel();
+  void computeExtTorque();
+  
+  void publishResidual();
+
   bool first_compute_=true;
 
   double init_time_;
@@ -84,6 +94,46 @@ public:
   bool next_traj_prepared_ = false;
 
   int plan_loop_cnt_ = 0;
+
+  // Neural Network
+  static const int num_seq = 10;
+  static const int num_features = 2;
+  static const int num_joint = 7;
+
+  float ring_buffer_[num_seq*num_features*num_joint];
+  float ring_buffer_control_input_[num_seq*num_joint];
+  int ring_buffer_idx_ = 0;
+
+  float max_theta_ = 3.14;
+  float min_theta_ = -3.14;
+  float max_theta_dot_ = 0.5;
+  float min_theta_dot_ = -0.5;
+  Eigen::Matrix<float, num_joint, 1> output_scaling;
+
+  static const int num_hidden_neurons_ = 100;
+
+  Eigen::Matrix<float, num_hidden_neurons_, num_seq*num_features*num_joint> backward_W0;
+  Eigen::Matrix<float, num_hidden_neurons_, 1> backward_b0;
+  Eigen::Matrix<float, num_hidden_neurons_, num_hidden_neurons_> backward_W2;
+  Eigen::Matrix<float, num_hidden_neurons_, 1> backward_b2;
+  Eigen::Matrix<float, num_joint, num_hidden_neurons_> backward_W4;
+  Eigen::Matrix<float, num_joint, 1> backward_b4;
+
+  Eigen::Matrix<float, (num_seq-1)*num_features*num_joint, 1> condition_;
+  Eigen::Matrix<float, num_features*num_joint, 1> state_;
+  Eigen::Matrix<float, num_joint, 1> input_;
+
+  Eigen::Matrix<float, num_hidden_neurons_, 1> backward_layer1_;
+  Eigen::Matrix<float, num_hidden_neurons_, 1> backward_layer2_;
+  Eigen::Matrix<float, num_joint, 1> backward_network_output_;
+
+  Eigen::Vector7d estimated_ext_torque_NN_;
+
+  // Residual publish
+  ros::Publisher resi_publisher_;
+  std_msgs::Float32MultiArray resi_msg_;
+  float resi_buffer_[num_seq*num_joint];
+  int resi_buffer_idx_ = 0;
 
 private:
   bool setGain(avatar_msgs::SetTrajectoryFollowerGain::Request  &req,

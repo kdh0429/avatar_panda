@@ -32,6 +32,15 @@ ResidualActionServer::ResidualActionServer(std::string name, ros::NodeHandle &nh
     ros::AsyncSpinner spinner(1);
     spinner.start();
     initMoveit();
+
+    // Neural Network
+    loadNetwork();
+    std::fill(ring_buffer_, ring_buffer_+num_seq*num_features*num_joint, 0);
+    std::fill(resi_buffer_, resi_buffer_+num_seq*num_joint, 0);
+    output_scaling << 11.10800,	54.13700,	26.78700,	22.05300,	2.649300,	2.600900,	0.3944200;
+
+    // Residual Publish
+    resi_publisher_ = nh.advertise<std_msgs::Float32MultiArray>("/panda/residual", 1000);
   }
 
   server_  = nh_.advertiseService(name + "_gain_set", &ResidualActionServer::setGain, this);
@@ -202,6 +211,236 @@ void ResidualActionServer::generateRandTraj()
     plan_loop_cnt_++;
 }
 
+// Neural Network
+void ResidualActionServer::loadNetwork()
+{
+    std::ifstream file[12];
+    file[0].open("/home/kim/panda_ws/src/panda_controller/model/backward_network_0_weight.txt", std::ios::in);
+    file[1].open("/home/kim/panda_ws/src/panda_controller/model/backward_network_0_bias.txt", std::ios::in);
+    file[2].open("/home/kim/panda_ws/src/panda_controller/model/backward_network_2_weight.txt", std::ios::in);
+    file[3].open("/home/kim/panda_ws/src/panda_controller/model/backward_network_2_bias.txt", std::ios::in);
+    file[4].open("/home/kim/panda_ws/src/panda_controller/model/backward_network_4_weight.txt", std::ios::in);
+    file[5].open("/home/kim/panda_ws/src/panda_controller/model/backward_network_4_bias.txt", std::ios::in);
+
+    if(!file[0].is_open())
+    {
+        std::cout<<"Can not find the weight file"<<std::endl;
+    }
+
+    float temp;
+    int row = 0;
+    int col = 0;
+
+    while(!file[0].eof() && row != backward_W0.rows())
+    {
+        file[0] >> temp;
+        if(temp != '\n')
+        {
+            backward_W0(row, col) = temp;
+            col ++;
+            if (col == backward_W0.cols())
+            {
+                col = 0;
+                row ++;
+            }
+        }
+    }
+    row = 0;
+    col = 0;
+    while(!file[1].eof() && row != backward_b0.rows())
+    {
+        file[1] >> temp;
+        if(temp != '\n')
+        {
+            backward_b0(row, col) = temp;
+            col ++;
+            if (col == backward_b0.cols())
+            {
+                col = 0;
+                row ++;
+            }
+        }
+    }
+    row = 0;
+    col = 0;
+    while(!file[2].eof() && row != backward_W2.rows())
+    {
+        file[2] >> temp;
+        if(temp != '\n')
+        {
+            backward_W2(row, col) = temp;
+            col ++;
+            if (col == backward_W2.cols())
+            {
+                col = 0;
+                row ++;
+            }
+        }
+    }
+    row = 0;
+    col = 0;
+    while(!file[3].eof() && row != backward_b2.rows())
+    {
+        file[3] >> temp;
+        if(temp != '\n')
+        {
+            backward_b2(row, col) = temp;
+            col ++;
+            if (col == backward_b2.cols())
+            {
+                col = 0;
+                row ++;
+            }
+        }
+    }
+    row = 0;
+    col = 0;
+    while(!file[4].eof() && row != backward_W4.rows())
+    {
+        file[4] >> temp;
+        if(temp != '\n')
+        {
+            backward_W4(row, col) = temp;
+            col ++;
+            if (col == backward_W4.cols())
+            {
+                col = 0;
+                row ++;
+            }
+        }
+    }
+    row = 0;
+    col = 0;
+    while(!file[5].eof() && row != backward_b4.rows())
+    {
+        file[5] >> temp;
+        if(temp != '\n')
+        {
+            backward_b4(row, col) = temp;
+            col ++;
+            if (col == backward_b4.cols())
+            {
+                col = 0;
+                row ++;
+            }
+        }
+    }
+}
+
+void ResidualActionServer::writeBuffer(FrankaModelUpdater &arm)
+{
+    if (print_count_==0)
+    {
+        for (int i = 0; i < num_dof_; i++)
+        {
+            ring_buffer_[ring_buffer_idx_*num_features*num_joint + num_features*i] = 2*(arm.q_(i)-min_theta_)/(max_theta_-min_theta_) - 1;
+            ring_buffer_[ring_buffer_idx_*num_features*num_joint + num_features*i + 1] = 2*(arm.qd_(i)-min_theta_dot_)/(max_theta_dot_-min_theta_dot_) - 1;
+            ring_buffer_control_input_[ring_buffer_idx_*num_joint + i] = 2*(arm.tau_measured_(i)+output_scaling(i))/(output_scaling(i)+output_scaling(i)) - 1;
+        }
+        
+        ring_buffer_idx_++;
+        if (ring_buffer_idx_ == num_seq)
+            ring_buffer_idx_ = 0;
+
+        for (int i = 0; i < num_dof_; i++)
+        {
+            resi_buffer_[resi_buffer_idx_*num_joint + i] = estimated_ext_torque_NN_(i);
+        }
+        
+        resi_buffer_idx_++;
+        if (resi_buffer_idx_ == num_seq)
+            resi_buffer_idx_ = 0;
+    }
+}
+
+void ResidualActionServer::computeBackwardDynamicsModel()
+{
+    Eigen::Matrix<float, num_seq*num_features*num_joint, 1> backNetInput;
+    
+    backNetInput << condition_, state_;
+    
+    backward_layer1_ = backward_W0 * backNetInput + backward_b0;
+    for (int i = 0; i < num_hidden_neurons_; i++) 
+    {
+        if (backward_layer1_(i) < 0)
+            backward_layer1_(i) = 0.0;
+    }
+
+    backward_layer2_ = backward_W2 * backward_layer1_ + backward_b2;
+    for (int i = 0; i < num_hidden_neurons_; i++) 
+    {
+        if (backward_layer2_(i) < 0)
+            backward_layer2_(i) = 0.0;
+    }
+
+    backward_network_output_ = backward_W4 * backward_layer2_ + backward_b4;
+} 
+
+// Residual Publish
+void ResidualActionServer::publishResidual()
+{
+    int cur_idx = 0;
+    if (resi_buffer_idx_ == 0)
+        cur_idx = num_seq - 1;
+    else
+        cur_idx = resi_buffer_idx_ - 1;
+
+    for (int seq = 0; seq < num_seq; seq++)
+    {
+        for (int i=0; i < num_joint; i++)
+        {
+            int process_data_idx = cur_idx+seq+1;
+            if (process_data_idx >= num_seq)
+                process_data_idx -= num_seq;
+           resi_msg_.data[num_joint*seq + i] = resi_buffer_[process_data_idx*num_joint + i];
+        }
+    }
+    resi_publisher_.publish(resi_msg_);
+}
+
+void ResidualActionServer::computeTrainedModel()
+{
+  int cur_idx = 0;
+  if (ring_buffer_idx_ == 0)
+      cur_idx = num_seq - 1;
+  else
+      cur_idx = ring_buffer_idx_ - 1;
+
+  for (int seq = 0; seq < num_seq-1; seq++)
+  {
+      for (int input_feat = 0; input_feat < num_features*num_joint; input_feat++)
+      {
+          int process_data_idx = cur_idx+seq+1;
+          if (process_data_idx >= num_seq)
+              process_data_idx -= num_seq;
+          condition_(seq*num_features*num_joint + input_feat) = ring_buffer_[process_data_idx*num_features*num_joint + input_feat];
+      }
+  }
+  for (int input_feat = 0; input_feat < num_features*num_joint; input_feat++)
+  {
+      state_(input_feat) = ring_buffer_[cur_idx*num_features*num_joint + input_feat];
+  }
+  for (int i = 0; i < num_joint; i++)
+      input_(i) = ring_buffer_control_input_[cur_idx*num_joint + i];
+
+  computeBackwardDynamicsModel();
+}
+
+void ResidualActionServer::computeExtTorque()
+{
+    int cur_idx = 0;
+    if (ring_buffer_idx_ == 0)
+        cur_idx = num_seq - 1;
+    else
+        cur_idx = ring_buffer_idx_ - 1;
+
+    for (int i= 0; i < num_dof_; i++)
+    {
+        estimated_ext_torque_NN_(i) = ring_buffer_control_input_[cur_idx*num_joint + i] - backward_network_output_(i);
+        estimated_ext_torque_NN_(i) = estimated_ext_torque_NN_(i) * output_scaling(i);
+    }
+}
+
 bool ResidualActionServer::compute(ros::Time time)
 {
   if (!control_running_)
@@ -241,6 +480,10 @@ bool ResidualActionServer::compute(ros::Time time)
       if (arm.second == true)
       {
         computeArm(time, *mu_[arm.first], arm.first);
+        writeBuffer(*mu_[arm.first]);
+        computeTrainedModel();
+        computeExtTorque();
+        publishResidual();
       }
     }
   }
