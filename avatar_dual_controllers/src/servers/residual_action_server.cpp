@@ -41,6 +41,10 @@ ResidualActionServer::ResidualActionServer(std::string name, ros::NodeHandle &nh
 
     // Residual Publish
     resi_publisher_ = nh.advertise<std_msgs::Float32MultiArray>("/panda/residual", 1000);
+    resi_msg_.data.resize(num_joint*num_seq);
+
+    // Subscribe Collision State
+    collision_subscriber_ = nh.subscribe("/panda/collision_state", 1000,  &ResidualActionServer::collisionStateCallback, this);
   }
 
   server_  = nh_.advertiseService(name + "_gain_set", &ResidualActionServer::setGain, this);
@@ -215,12 +219,12 @@ void ResidualActionServer::generateRandTraj()
 void ResidualActionServer::loadNetwork()
 {
     std::ifstream file[12];
-    file[0].open("/home/kim/panda_ws/src/panda_controller/model/backward_network_0_weight.txt", std::ios::in);
-    file[1].open("/home/kim/panda_ws/src/panda_controller/model/backward_network_0_bias.txt", std::ios::in);
-    file[2].open("/home/kim/panda_ws/src/panda_controller/model/backward_network_2_weight.txt", std::ios::in);
-    file[3].open("/home/kim/panda_ws/src/panda_controller/model/backward_network_2_bias.txt", std::ios::in);
-    file[4].open("/home/kim/panda_ws/src/panda_controller/model/backward_network_4_weight.txt", std::ios::in);
-    file[5].open("/home/kim/panda_ws/src/panda_controller/model/backward_network_4_bias.txt", std::ios::in);
+    file[0].open("/home/dyros21/avatar_panda/src/avatar_dual_controllers/NNweight/backward_network_0_weight.txt", std::ios::in);
+    file[1].open("/home/dyros21/avatar_panda/src/avatar_dual_controllers/NNweight/backward_network_0_bias.txt", std::ios::in);
+    file[2].open("/home/dyros21/avatar_panda/src/avatar_dual_controllers/NNweight/backward_network_2_weight.txt", std::ios::in);
+    file[3].open("/home/dyros21/avatar_panda/src/avatar_dual_controllers/NNweight/backward_network_2_bias.txt", std::ios::in);
+    file[4].open("/home/dyros21/avatar_panda/src/avatar_dual_controllers/NNweight/backward_network_4_weight.txt", std::ios::in);
+    file[5].open("/home/dyros21/avatar_panda/src/avatar_dual_controllers/NNweight/backward_network_4_bias.txt", std::ios::in);
 
     if(!file[0].is_open())
     {
@@ -398,6 +402,11 @@ void ResidualActionServer::publishResidual()
     resi_publisher_.publish(resi_msg_);
 }
 
+void ResidualActionServer::collisionStateCallback(const std_msgs::Bool::ConstPtr& msg)
+{
+  collision_state_ = msg->data;
+}
+
 void ResidualActionServer::computeTrainedModel()
 {
   int cur_idx = 0;
@@ -502,27 +511,30 @@ bool ResidualActionServer::computeArm(ros::Time time, FrankaModelUpdater &arm, c
 
   desired_torque = arm.modified_mass_matrix_*((kp*(q_desired_ - arm.q_) + kv*(qd_desired_ - arm.qd_))) + arm.coriolis_;
 
+  if (collision_state_)
+    desired_torque.setZero();
+
   // Eigen::Matrix<double, 7,7> kpp = Eigen::Matrix<double, 7,7>::Identity() * 0.2;
   // kpp(6,6) = 0.05;
   // desired_torque = kpp * qdd_desired_ + (kp*(q_desired_ - arm.q_) + kv*(qd_desired_ - arm.qd_)) + arm.coriolis_;
 
   if (++ print_count_ > iter_per_print_)
   {
-    debug_file_ << std::fixed << std::setprecision(8);
-    Eigen::IOFormat tab_format(Eigen::StreamPrecision, 0, "\t", "\n");
-    // debug_file_.precision(std::numeric_limits< double >::digits10);
-    if (debug_file_.is_open())
-    {
-      debug_file_ << time.toSec() - init_time_ << '\t' 
-            << arm.q_.transpose().format(tab_format) << '\t'
-            << arm.qd_.transpose().format(tab_format) << '\t' 
-            << arm.tau_measured_.transpose().format(tab_format) << '\t' 
-            << arm.tau_desired_read_.transpose().format(tab_format) << '\t' 
-            << arm.tau_ext_filtered_.transpose().format(tab_format) << '\t' 
-            << q_desired_.transpose().format(tab_format) << '\t' 
-            << qd_desired_.transpose().format(tab_format)
-            << std::endl;
-    }
+    // debug_file_ << std::fixed << std::setprecision(8);
+    // Eigen::IOFormat tab_format(Eigen::StreamPrecision, 0, "\t", "\n");
+    // // debug_file_.precision(std::numeric_limits< double >::digits10);
+    // if (debug_file_.is_open())
+    // {
+    //   debug_file_ << time.toSec() - init_time_ << '\t' 
+    //         << arm.q_.transpose().format(tab_format) << '\t'
+    //         << arm.qd_.transpose().format(tab_format) << '\t' 
+    //         << arm.tau_measured_.transpose().format(tab_format) << '\t' 
+    //         << arm.tau_desired_read_.transpose().format(tab_format) << '\t' 
+    //         << arm.tau_ext_filtered_.transpose().format(tab_format) << '\t' 
+    //         << q_desired_.transpose().format(tab_format) << '\t' 
+    //         << qd_desired_.transpose().format(tab_format)
+    //         << std::endl;
+    // }
     print_count_ = 0;
   }
 

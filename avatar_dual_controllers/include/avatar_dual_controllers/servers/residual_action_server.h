@@ -13,6 +13,7 @@
 #include <random>
 
 #include <std_msgs/Float32MultiArray.h>
+#include <std_msgs/Bool.h>
 
 #define RobotName "panda_right"
 
@@ -58,6 +59,7 @@ public:
   void computeExtTorque();
   
   void publishResidual();
+  void collisionStateCallback(const std_msgs::Bool::ConstPtr& msg);
 
   bool first_compute_=true;
 
@@ -134,6 +136,10 @@ public:
   std_msgs::Float32MultiArray resi_msg_;
   float resi_buffer_[num_seq*num_joint];
   int resi_buffer_idx_ = 0;
+
+  // Subscribe collision state
+  ros::Subscriber collision_subscriber_;
+  bool collision_state_;
 
 private:
   bool setGain(avatar_msgs::SetTrajectoryFollowerGain::Request  &req,
