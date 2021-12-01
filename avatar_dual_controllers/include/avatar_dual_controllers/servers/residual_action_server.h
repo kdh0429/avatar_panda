@@ -64,6 +64,8 @@ public:
   void publishResidual();
   void collisionStateCallback(const std_msgs::Bool::ConstPtr& msg);
 
+  bool first_compute_=true;
+
   double init_time_;
   Eigen::Vector7d init_q_;
   Eigen::Vector7d init_qd_;
