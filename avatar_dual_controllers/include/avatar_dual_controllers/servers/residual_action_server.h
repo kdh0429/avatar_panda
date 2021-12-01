@@ -44,6 +44,7 @@ public:
                           
   bool compute(ros::Time time) override;
   bool computeArm(ros::Time time, FrankaModelUpdater &arm, const std::string & arm_name);
+  bool computeArmForce(ros::Time time, FrankaModelUpdater &arm, const std::string & arm_name);
 
   bool setRandomTarget(ros::Time time);
   bool setInitTarget(ros::Time time);
@@ -56,7 +57,7 @@ public:
   void writeBuffer(FrankaModelUpdater &arm);
   void computeBackwardDynamicsModel();
   void computeTrainedModel();
-  void computeExtTorque();
+  void computeExtTorque(FrankaModelUpdater &arm);
   
   void publishResidual();
   void collisionStateCallback(const std_msgs::Bool::ConstPtr& msg);
@@ -140,6 +141,24 @@ public:
   // Subscribe collision state
   ros::Subscriber collision_subscriber_;
   bool collision_state_;
+
+  // Force control
+  Eigen::Isometry3d x_target_;
+  Eigen::Isometry3d x_desired_;
+  Eigen::Isometry3d x_mode_init_;
+  Eigen::Vector6d x_dot_desired_;
+
+  Eigen::Vector6d estimated_ext_force_;
+  Eigen::Vector6d estimated_ext_force_init_;
+  
+  bool force_control_init_;
+
+  double mode_init_time_ = 0.0;
+
+  double f_I_ = 0.0;
+  double f_d_z_ = 0.0;
+
+  Eigen::MatrixXd kv_task_, kp_task_;
 
 private:
   bool setGain(avatar_msgs::SetTrajectoryFollowerGain::Request  &req,

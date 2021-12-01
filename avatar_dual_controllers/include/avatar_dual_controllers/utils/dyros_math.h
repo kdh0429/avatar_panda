@@ -359,4 +359,31 @@ Eigen::Matrix<double, 2, 1> spiral_x(double time,                     ///< Curre
 
 Eigen::MatrixXd leastSquareLinear(const std::vector<double> vec, const int interval);
 
+const static Eigen::Vector3d rotationCubicDot(double time,
+		double time_0,
+		double time_f,
+		const Eigen::Matrix3d &rotation_0, const Eigen::Matrix3d &rotation_f)
+	{
+		Eigen::Vector3d result;
+		result << 0, 0, 0;
+
+		if (time >= time_f)
+		{
+			return result;
+		}
+		else if (time < time_0)
+		{
+			return result;
+		}
+
+		Eigen::Matrix3d rotation_d = rotation_f * rotation_0.transpose();
+		double theta = acos((rotation_d(0, 0) + rotation_d(1, 1) + rotation_d(2, 2) - 1) / 2);
+		double theta_dot = cubicDot(time, time_0, time_f, 0, theta, 0, 0);
+		Eigen::Vector3d w;
+		w << 1 / (2 * sin(theta))* (rotation_d(2, 1) - rotation_d(1, 2)), 1 / (2 * sin(theta))* (rotation_d(0, 2) - rotation_d(2, 0)), 1 / (2 * sin(theta))* (rotation_d(1, 0) - rotation_d(0, 1));
+
+		result = theta_dot * w;
+
+		return result;
+	}
 }

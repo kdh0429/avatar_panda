@@ -45,6 +45,20 @@ ResidualActionServer::ResidualActionServer(std::string name, ros::NodeHandle &nh
 
     // Subscribe Collision State
     collision_subscriber_ = nh.subscribe("/panda/collision_state", 1000,  &ResidualActionServer::collisionStateCallback, this);
+
+    // Force Control
+    kp_task_.resize(6,6);
+    kp_task_.setZero();
+    kv_task_.resize(6,6);
+    kv_task_.setZero();
+
+    for (int i = 0; i < 3; i++)
+    {
+        kp_task_(i,i) = 1000;
+        kv_task_(i,i) = 20;
+        kp_task_(i+3,i+3) = 4000;
+        kv_task_(i+3,i+3) = 30;
+    }
   }
 
   server_  = nh_.advertiseService(name + "_gain_set", &ResidualActionServer::setGain, this);
@@ -435,7 +449,7 @@ void ResidualActionServer::computeTrainedModel()
   computeBackwardDynamicsModel();
 }
 
-void ResidualActionServer::computeExtTorque()
+void ResidualActionServer::computeExtTorque(FrankaModelUpdater &arm)
 {
     int cur_idx = 0;
     if (ring_buffer_idx_ == 0)
@@ -448,6 +462,8 @@ void ResidualActionServer::computeExtTorque()
         estimated_ext_torque_NN_(i) = ring_buffer_control_input_[cur_idx*num_joint + i] - backward_network_output_(i);
         estimated_ext_torque_NN_(i) = estimated_ext_torque_NN_(i) * output_scaling(i);
     }
+
+    estimated_ext_force_ = arm.jacobian_bar_.transpose() * estimated_ext_torque_NN_;
 }
 
 bool ResidualActionServer::compute(ros::Time time)
@@ -471,29 +487,50 @@ bool ResidualActionServer::compute(ros::Time time)
         first_compute_ = false;
       }
 
+      // Random Trajectory
+
       generateRandTraj();
           
+      // if (cur_time_ < init_time_ + 5.0)
+      // {
+      //   setInitTarget(time);
+      // }
+      // else if (init_traj_prepared_)
+      // {
+      //   setRandomTarget(time);  
+      // }   
+      // else
+      // {
+      //   setInitTarget(time);
+      // }
+      
+      // if (arm.second == true)
+      // {
+      //   computeArm(time, *mu_[arm.first], arm.first);
+      //   writeBuffer(*mu_[arm.first]);
+      //   computeTrainedModel();
+      //   computeExtTorque(*mu_[arm.first]);
+      //   publishResidual();
+      // }
+
+      // Force Control
       if (cur_time_ < init_time_ + 5.0)
       {
         setInitTarget(time);
+        computeArm(time, *mu_[arm.first], arm.first);
       }
-      else if (init_traj_prepared_)
-      {
-        setRandomTarget(time);  
-      }   
       else
       {
-        setInitTarget(time);
+        if (arm.second == true)
+        {
+          computeArmForce(time, *mu_[arm.first], arm.first);       
+        }
       }
+      writeBuffer(*mu_[arm.first]);
+      computeTrainedModel();
+      computeExtTorque(*mu_[arm.first]);
+      publishResidual();    
       
-      if (arm.second == true)
-      {
-        computeArm(time, *mu_[arm.first], arm.first);
-        writeBuffer(*mu_[arm.first]);
-        computeTrainedModel();
-        computeExtTorque();
-        publishResidual();
-      }
     }
   }
   return false;
@@ -535,7 +572,87 @@ bool ResidualActionServer::computeArm(ros::Time time, FrankaModelUpdater &arm, c
     //         << qd_desired_.transpose().format(tab_format)
     //         << std::endl;
     // }
+
+
+    // std::cout<<"q: " << arm.q_.transpose() << std::endl;
+    // std::cout<<"qdot: " << arm.qd_.transpose() << std::endl;
+    // std::cout<<"tau: " << arm.tau_measured_.transpose() << std::endl;
+    // std::cout<<"Nework Output: " << backward_network_output_.transpose() << std::endl;
+    // std::cout<<"Ext Torque: " << estimated_ext_torque_NN_.transpose() << std::endl;
+    // std::cout<<"Ext Force: " << estimated_ext_force_.transpose() << std::endl;
     print_count_ = 0;
+  }
+
+  arm.setTorque(desired_torque);
+  return true;
+}
+
+bool ResidualActionServer::computeArmForce(ros::Time time, FrankaModelUpdater &arm, const std::string & arm_name)
+{
+  Eigen::Matrix<double,7,1> desired_torque;
+  desired_torque.setZero();
+  if (cur_time_ >= init_time_ + 6.0)
+  { 
+    if (!force_control_init_)
+    {
+      estimated_ext_force_init_ = estimated_ext_force_;
+      mode_init_time_ = cur_time_;
+      x_mode_init_ = arm.transform_;
+      force_control_init_ = true;
+    }
+
+    double traj_duration = 5.0;
+
+    Eigen::Vector6d f_star;
+
+    // Position control y, z
+    x_target_.translation() << 0.5561, 0.0, 0.5902;
+    x_target_.linear() << 0.664068,    0.747251,  -0.0250978,
+                          0.746716,   -0.664542,  -0.0282643,
+                          -0.037799, 2.84703e-05,   -0.999285;
+
+    for (int i = 0; i < 3; i++)
+    {
+        x_desired_.translation()(i) = dyros_math::cubic(cur_time_, mode_init_time_, mode_init_time_+traj_duration, x_mode_init_.translation()(i), x_target_.translation()(i), 0.0, 0.0);
+        x_dot_desired_(i) = dyros_math::cubicDot(cur_time_, mode_init_time_, mode_init_time_+traj_duration, x_mode_init_.translation()(i), x_target_.translation()(i), 0.0, 0.0);
+    }
+    
+    x_desired_.linear() = dyros_math::rotationCubic(cur_time_, mode_init_time_, mode_init_time_+traj_duration, x_mode_init_.linear(), x_target_.linear()); 
+    x_dot_desired_.segment(3,3) = dyros_math::rotationCubicDot(cur_time_, mode_init_time_, mode_init_time_+traj_duration, x_mode_init_.linear(), x_target_.linear()); 
+
+    Eigen::Vector6d x_error;
+    x_error.setZero();
+    Eigen::Vector6d x_dot_error;
+    x_dot_error.setZero();
+
+    x_error.segment(0,3) = x_desired_.translation() - arm.position_;
+    x_error.segment(3,3) = -dyros_math::getPhi(arm.rotation_, x_desired_.linear());
+    x_dot_error.segment(0,3)= x_dot_desired_.segment(0,3) - arm.xd_.segment(0,3);
+    x_dot_error.segment(3,3)= x_dot_desired_.segment(3,3) - arm.xd_.segment(3,3);
+
+    f_star = kp_task_*x_error +kv_task_*x_dot_error;
+
+    // Force control z
+    f_d_z_ = cubic(cur_time_, mode_init_time_, mode_init_time_+traj_duration, estimated_ext_force_init_(2), -5.0, 0.0, 0.0);
+
+    f_star(2) = 0.0;
+    f_I_ = f_I_ + 1.0 * (f_d_z_ - estimated_ext_force_(2)) / 1000;
+    
+
+    Eigen::VectorXd F_d;
+    F_d.resize(6);
+    F_d.setZero();
+    F_d(2) = f_d_z_ + f_I_;
+    
+    desired_torque = arm.jacobian_.transpose()*(arm.modified_lambda_matrix_*f_star + F_d) + arm.coriolis_;
+
+    if (collision_state_)
+      desired_torque.setZero();
+
+    if (++ print_count_ > iter_per_print_)
+    {
+      print_count_ = 0;
+    }
   }
 
   arm.setTorque(desired_torque);
