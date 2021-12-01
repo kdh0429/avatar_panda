@@ -28,6 +28,10 @@ ResidualActionServer::ResidualActionServer(std::string name, ros::NodeHandle &nh
     if (iter->first == RobotName)
       control_running_ = true;
 
+    init_time_ = time.toSec();
+    init_q_ = mu_[arm.first]->q_;
+    init_qd_ = mu_[arm.first]->qd_;
+
     // Moveit
     ros::AsyncSpinner spinner(1);
     spinner.start();
@@ -87,14 +91,12 @@ void ResidualActionServer::initMoveit()
     q_target_plan_candidate_.resize(num_dof_);
     q_init_plan_.resize(num_dof_);
     q_dot_plan_.resize(num_dof_);
-    // std::fill(q_target_plan_.begin(), q_target_plan_.end(), 0);
-    q_target_plan_[0] = 0.0;
-    q_target_plan_[1] = 0.0;
-    q_target_plan_[2] = 0.0;
-    q_target_plan_[3] = -90*DEG2RAD;
-    q_target_plan_[4] = 0.0;
-    q_target_plan_[5] = 90*DEG2RAD;
-    q_target_plan_[6] = 0.0;
+    
+    for (int i = 0; i < num_dof_; i++)
+    {
+      q_target_plan_[i] = init_q_(i)
+    }
+    
     std::fill(q_init_plan_.begin(), q_init_plan_.end(), 0);
     std::fill(q_dot_plan_.begin(), q_dot_plan_.end(), 0);
 
@@ -477,15 +479,6 @@ bool ResidualActionServer::compute(ros::Time time)
     if (arm.first == RobotName)
     {
       cur_time_ = time.toSec();
-
-      if (first_compute_)
-      {
-        init_time_ = time.toSec();
-        init_q_ = mu_[arm.first]->q_;
-        init_qd_ = mu_[arm.first]->qd_;
-
-        first_compute_ = false;
-      }
 
       // Random Trajectory
       if (control_mode_ == RandomMotion)
