@@ -488,48 +488,58 @@ bool ResidualActionServer::compute(ros::Time time)
       }
 
       // Random Trajectory
-
-      generateRandTraj();
-          
-      // if (cur_time_ < init_time_ + 5.0)
-      // {
-      //   setInitTarget(time);
-      // }
-      // else if (init_traj_prepared_)
-      // {
-      //   setRandomTarget(time);  
-      // }   
-      // else
-      // {
-      //   setInitTarget(time);
-      // }
-      
-      // if (arm.second == true)
-      // {
-      //   computeArm(time, *mu_[arm.first], arm.first);
-      //   writeBuffer(*mu_[arm.first]);
-      //   computeTrainedModel();
-      //   computeExtTorque(*mu_[arm.first]);
-      //   publishResidual();
-      // }
-
-      // Force Control
-      if (cur_time_ < init_time_ + 5.0)
-      {
-        setInitTarget(time);
-        computeArm(time, *mu_[arm.first], arm.first);
-      }
-      else
-      {
+      if (control_mode_ == RandomMotion)
+      { 
+        if (cur_time_ < init_time_ + 5.0)
+        {
+          setInitTarget(time);
+          for (int i=0; i< num_dof_; i++)
+            q_target_plan_[i] =  mu_[arm.first]->q_(i);
+        }
+        else
+        {
+          generateRandTraj();
+        }
+        
+        if (init_traj_prepared_)
+        {
+          setRandomTarget(time);  
+        }   
+        else
+        {
+          setInitTarget(time);
+        }
+        
         if (arm.second == true)
         {
-          computeArmForce(time, *mu_[arm.first], arm.first);       
+          computeArm(time, *mu_[arm.first], arm.first);
+          writeBuffer(*mu_[arm.first]);
+          computeTrainedModel();
+          computeExtTorque(*mu_[arm.first]);
+          publishResidual();
         }
       }
-      writeBuffer(*mu_[arm.first]);
-      computeTrainedModel();
-      computeExtTorque(*mu_[arm.first]);
-      publishResidual();    
+
+      // Force Control
+      if (control_mode_ == HybridControl)
+      {
+        if (cur_time_ < init_time_ + 5.0)
+        {
+          setInitTarget(time);
+          computeArm(time, *mu_[arm.first], arm.first);
+        }
+        else
+        {
+          if (arm.second == true)
+          {
+            computeArmForce(time, *mu_[arm.first], arm.first);       
+          }
+        }
+        writeBuffer(*mu_[arm.first]);
+        computeTrainedModel();
+        computeExtTorque(*mu_[arm.first]);
+        publishResidual();    
+      }
       
     }
   }
@@ -557,22 +567,21 @@ bool ResidualActionServer::computeArm(ros::Time time, FrankaModelUpdater &arm, c
 
   if (++ print_count_ > iter_per_print_)
   {
-    // debug_file_ << std::fixed << std::setprecision(8);
-    // Eigen::IOFormat tab_format(Eigen::StreamPrecision, 0, "\t", "\n");
-    // // debug_file_.precision(std::numeric_limits< double >::digits10);
-    // if (debug_file_.is_open())
-    // {
-    //   debug_file_ << time.toSec() - init_time_ << '\t' 
-    //         << arm.q_.transpose().format(tab_format) << '\t'
-    //         << arm.qd_.transpose().format(tab_format) << '\t' 
-    //         << arm.tau_measured_.transpose().format(tab_format) << '\t' 
-    //         << arm.tau_desired_read_.transpose().format(tab_format) << '\t' 
-    //         << arm.tau_ext_filtered_.transpose().format(tab_format) << '\t' 
-    //         << q_desired_.transpose().format(tab_format) << '\t' 
-    //         << qd_desired_.transpose().format(tab_format)
-    //         << std::endl;
-    // }
-
+    debug_file_ << std::fixed << std::setprecision(8);
+    Eigen::IOFormat tab_format(Eigen::StreamPrecision, 0, "\t", "\n");
+    // debug_file_.precision(std::numeric_limits< double >::digits10);
+    if (debug_file_.is_open())
+    {
+      debug_file_ << time.toSec() - init_time_ << '\t' 
+            << arm.q_.transpose().format(tab_format) << '\t'
+            << arm.qd_.transpose().format(tab_format) << '\t' 
+            << arm.tau_measured_.transpose().format(tab_format) << '\t' 
+            << arm.tau_desired_read_.transpose().format(tab_format) << '\t' 
+            << arm.tau_ext_filtered_.transpose().format(tab_format) << '\t' 
+            << q_desired_.transpose().format(tab_format) << '\t' 
+            << qd_desired_.transpose().format(tab_format)
+            << std::endl;
+    }
 
     // std::cout<<"q: " << arm.q_.transpose() << std::endl;
     // std::cout<<"qdot: " << arm.qd_.transpose() << std::endl;
