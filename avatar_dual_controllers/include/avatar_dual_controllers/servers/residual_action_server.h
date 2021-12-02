@@ -104,9 +104,11 @@ public:
   static const int num_seq = 10;
   static const int num_features = 2;
   static const int num_joint = 7;
+  static const int train_test_time_ratio = 10;
+  static const int buffer_idx_size = num_seq * train_test_time_ratio;
 
-  float ring_buffer_[num_seq*num_features*num_joint];
-  float ring_buffer_control_input_[num_seq*num_joint];
+  float ring_buffer_[buffer_idx_size*num_features*num_joint];
+  float ring_buffer_control_input_[buffer_idx_size*num_joint];
   int ring_buffer_idx_ = 0;
 
   float max_theta_ = 3.14;
@@ -137,7 +139,7 @@ public:
   // Residual publish
   ros::Publisher resi_publisher_;
   std_msgs::Float32MultiArray resi_msg_;
-  float resi_buffer_[num_seq*num_joint];
+  float resi_buffer_[buffer_idx_size*num_joint];
   int resi_buffer_idx_ = 0;
 
   // Subscribe collision state

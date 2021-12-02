@@ -35,8 +35,9 @@ ResidualActionServer::ResidualActionServer(std::string name, ros::NodeHandle &nh
 
     // Neural Network
     loadNetwork();
-    std::fill(ring_buffer_, ring_buffer_+num_seq*num_features*num_joint, 0);
-    std::fill(resi_buffer_, resi_buffer_+num_seq*num_joint, 0);
+    std::fill(ring_buffer_, ring_buffer_+buffer_idx_size*num_features*num_joint, 0);
+    std::fill(ring_buffer_control_input_, ring_buffer_control_input_+buffer_idx_size*num_joint, 0);
+    std::fill(resi_buffer_, resi_buffer_+buffer_idx_size*num_joint, 0);
     output_scaling << 11.10800,	54.13700,	26.78700,	22.05300,	2.649300,	2.600900,	0.3944200;
 
     // Residual Publish
@@ -77,6 +78,7 @@ void ResidualActionServer::preemptCallback()
 
 void ResidualActionServer::initMoveit()
 {
+    move_group_.setPlanningTime(0.015);
     // For Moveit
     q_limit_l_.resize(num_dof_);
     q_limit_u_.resize(num_dof_);
@@ -347,28 +349,25 @@ void ResidualActionServer::loadNetwork()
 
 void ResidualActionServer::writeBuffer(FrankaModelUpdater &arm)
 {
-    if (print_count_==0)
-    {
-        for (int i = 0; i < num_dof_; i++)
-        {
-            ring_buffer_[ring_buffer_idx_*num_features*num_joint + num_features*i] = 2*(arm.q_(i)-min_theta_)/(max_theta_-min_theta_) - 1;
-            ring_buffer_[ring_buffer_idx_*num_features*num_joint + num_features*i + 1] = 2*(arm.qd_(i)-min_theta_dot_)/(max_theta_dot_-min_theta_dot_) - 1;
-            ring_buffer_control_input_[ring_buffer_idx_*num_joint + i] = 2*(arm.tau_measured_(i)+output_scaling(i))/(output_scaling(i)+output_scaling(i)) - 1;
-        }
-        
-        ring_buffer_idx_++;
-        if (ring_buffer_idx_ == num_seq)
-            ring_buffer_idx_ = 0;
+  for (int i = 0; i < num_dof_; i++)
+  {
+      ring_buffer_[ring_buffer_idx_*num_features*num_joint + num_features*i] = 2*(arm.q_(i)-min_theta_)/(max_theta_-min_theta_) - 1;
+      ring_buffer_[ring_buffer_idx_*num_features*num_joint + num_features*i + 1] = 2*(arm.qd_(i)-min_theta_dot_)/(max_theta_dot_-min_theta_dot_) - 1;
+      ring_buffer_control_input_[ring_buffer_idx_*num_joint + i] = 2*(arm.tau_measured_(i)+output_scaling(i))/(output_scaling(i)+output_scaling(i)) - 1;
+  }
+  
+  ring_buffer_idx_++;
+  if (ring_buffer_idx_ == buffer_idx_size)
+      ring_buffer_idx_ = 0;
 
-        for (int i = 0; i < num_dof_; i++)
-        {
-            resi_buffer_[resi_buffer_idx_*num_joint + i] = estimated_ext_torque_NN_(i);
-        }
-        
-        resi_buffer_idx_++;
-        if (resi_buffer_idx_ == num_seq)
-            resi_buffer_idx_ = 0;
-    }
+  for (int i = 0; i < num_dof_; i++)
+  {
+      resi_buffer_[resi_buffer_idx_*num_joint + i] = estimated_ext_torque_NN_(i);
+  }
+  
+  resi_buffer_idx_++;
+  if (resi_buffer_idx_ == buffer_idx_size)
+      resi_buffer_idx_ = 0;
 }
 
 void ResidualActionServer::computeBackwardDynamicsModel()
@@ -399,7 +398,7 @@ void ResidualActionServer::publishResidual()
 {
     int cur_idx = 0;
     if (resi_buffer_idx_ == 0)
-        cur_idx = num_seq - 1;
+        cur_idx = buffer_idx_size - 1;
     else
         cur_idx = resi_buffer_idx_ - 1;
 
@@ -407,9 +406,9 @@ void ResidualActionServer::publishResidual()
     {
         for (int i=0; i < num_joint; i++)
         {
-            int process_data_idx = cur_idx+seq+1;
-            if (process_data_idx >= num_seq)
-                process_data_idx -= num_seq;
+            int process_data_idx = cur_idx + train_test_time_ratio*seq + 1;
+            if (process_data_idx >= buffer_idx_size)
+                process_data_idx -= buffer_idx_size;
            resi_msg_.data[num_joint*seq + i] = resi_buffer_[process_data_idx*num_joint + i];
         }
     }
@@ -425,7 +424,7 @@ void ResidualActionServer::computeTrainedModel()
 {
   int cur_idx = 0;
   if (ring_buffer_idx_ == 0)
-      cur_idx = num_seq - 1;
+      cur_idx = buffer_idx_size - 1;
   else
       cur_idx = ring_buffer_idx_ - 1;
 
@@ -433,9 +432,9 @@ void ResidualActionServer::computeTrainedModel()
   {
       for (int input_feat = 0; input_feat < num_features*num_joint; input_feat++)
       {
-          int process_data_idx = cur_idx+seq+1;
-          if (process_data_idx >= num_seq)
-              process_data_idx -= num_seq;
+          int process_data_idx = cur_idx + train_test_time_ratio*seq + 1;
+          if (process_data_idx >= buffer_idx_size)
+              process_data_idx -= buffer_idx_size;
           condition_(seq*num_features*num_joint + input_feat) = ring_buffer_[process_data_idx*num_features*num_joint + input_feat];
       }
   }
@@ -453,7 +452,7 @@ void ResidualActionServer::computeExtTorque(FrankaModelUpdater &arm)
 {
     int cur_idx = 0;
     if (ring_buffer_idx_ == 0)
-        cur_idx = num_seq - 1;
+        cur_idx = buffer_idx_size - 1;
     else
         cur_idx = ring_buffer_idx_ - 1;
 
@@ -572,15 +571,15 @@ bool ResidualActionServer::computeArm(ros::Time time, FrankaModelUpdater &arm, c
     // debug_file_.precision(std::numeric_limits< double >::digits10);
     if (debug_file_.is_open())
     {
-      debug_file_ << time.toSec() - init_time_ << '\t' 
-            << arm.q_.transpose().format(tab_format) << '\t'
-            << arm.qd_.transpose().format(tab_format) << '\t' 
-            << arm.tau_measured_.transpose().format(tab_format) << '\t' 
-            << arm.tau_desired_read_.transpose().format(tab_format) << '\t' 
-            << arm.tau_ext_filtered_.transpose().format(tab_format) << '\t' 
-            << q_desired_.transpose().format(tab_format) << '\t' 
-            << qd_desired_.transpose().format(tab_format)
-            << std::endl;
+      // debug_file_ << time.toSec() - init_time_ << '\t' 
+      //       << arm.q_.transpose().format(tab_format) << '\t'
+      //       << arm.qd_.transpose().format(tab_format) << '\t' 
+      //       << arm.tau_measured_.transpose().format(tab_format) << '\t' 
+      //       << arm.tau_desired_read_.transpose().format(tab_format) << '\t' 
+      //       << arm.tau_ext_filtered_.transpose().format(tab_format) << '\t' 
+      //       << q_desired_.transpose().format(tab_format) << '\t' 
+      //       << qd_desired_.transpose().format(tab_format)
+      //       << std::endl;
     }
 
     // std::cout<<"q: " << arm.q_.transpose() << std::endl;
