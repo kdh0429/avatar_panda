@@ -97,6 +97,7 @@ public:
   bool init_traj_started_ = false;
   bool init_traj_prepared_ = false;
   bool next_traj_prepared_ = false;
+  bool current_traj_finished_ = true;
 
   int plan_loop_cnt_ = 0;
 

@@ -183,7 +183,7 @@ void ResidualActionServer::setMoveitObstables()
 
 void ResidualActionServer::generateRandTraj()
 {
-    if (!next_traj_prepared_ && plan_loop_cnt_%100 == 0)
+    if (current_traj_finished_ && plan_loop_cnt_%100 == 0)
     {
         moveit::core::RobotState start_state = *(move_group_.getCurrentState());
         for (int i = 0; i < num_dof_; i++)
@@ -217,6 +217,7 @@ void ResidualActionServer::generateRandTraj()
         {
           q_target_plan_ = q_target_plan_candidate_;
           next_traj_prepared_ = true;
+          current_traj_finished_ = false;
           plan_loop_cnt_ = 0;
 
           if (traj_num_ == 0)
@@ -418,6 +419,8 @@ void ResidualActionServer::publishResidual()
 void ResidualActionServer::collisionStateCallback(const std_msgs::Bool::ConstPtr& msg)
 {
   collision_state_ = msg->data;
+  if (collision_state_ == true)
+    std::cout<<"Collision Ocurred!" << std::endl;
 }
 
 void ResidualActionServer::computeTrainedModel()
@@ -705,6 +708,8 @@ bool ResidualActionServer::setRandomTarget(ros::Time time)
   else if (cur_time_ >= traj_init_time_ + traj_duration_)
   {
       // Rest
+      if (init_traj_started_ && !next_traj_prepared_)
+        current_traj_finished_ = true;
   }
   else if (cur_time_ >= traj_init_time_ + random_plan_.trajectory_.joint_trajectory.points[cur_waypoint_+1].time_from_start.toSec())
   {
