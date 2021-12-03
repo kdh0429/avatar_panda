@@ -38,7 +38,7 @@ ResidualActionServer::ResidualActionServer(std::string name, ros::NodeHandle &nh
     std::fill(ring_buffer_, ring_buffer_+buffer_idx_size*num_features*num_joint, 0);
     std::fill(ring_buffer_control_input_, ring_buffer_control_input_+buffer_idx_size*num_joint, 0);
     std::fill(resi_buffer_, resi_buffer_+buffer_idx_size*num_joint, 0);
-    output_scaling << 11.10800,	54.13700,	26.78700,	22.05300,	2.649300,	2.600900,	0.3944200;
+    output_scaling << 10.246, 54.954, 27.211, 22.156, 2.6118, 2.6689, 0.47224;
 
     // Residual Publish
     resi_publisher_ = nh.advertise<std_msgs::Float32MultiArray>("/panda/residual", 1000);
