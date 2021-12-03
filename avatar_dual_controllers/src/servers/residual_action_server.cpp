@@ -571,7 +571,6 @@ bool ResidualActionServer::computeArm(ros::Time time, FrankaModelUpdater &arm, c
   {
     debug_file_ << std::fixed << std::setprecision(8);
     Eigen::IOFormat tab_format(Eigen::StreamPrecision, 0, "\t", "\n");
-    // debug_file_.precision(std::numeric_limits< double >::digits10);
     if (debug_file_.is_open())
     {
       // debug_file_ << time.toSec() - init_time_ << '\t' 
@@ -607,29 +606,53 @@ bool ResidualActionServer::computeArmForce(ros::Time time, FrankaModelUpdater &a
     if (!force_control_init_)
     {
       estimated_ext_force_init_ = estimated_ext_force_;
-      mode_init_time_ = cur_time_;
+
+      force_control_init_time_ = cur_time_;
+      position_control_init_time_ = cur_time_;
+
       x_mode_init_ = arm.transform_;
-      force_control_init_ = true;
-    }
 
-    double traj_duration = 5.0;
-
-    Eigen::Vector6d f_star;
-
-    // Position control y, z
-    x_target_.translation() << 0.5561, 0.0, 0.5902;
-    x_target_.linear() << 0.664068,    0.747251,  -0.0250978,
+      position_control_direction_ = 1;
+      x_target_.translation() << 0.5561, 0.10, 0.5902;
+      x_target_.linear() << 0.664068,    0.747251,  -0.0250978,
                           0.746716,   -0.664542,  -0.0282643,
                           -0.037799, 2.84703e-05,   -0.999285;
 
+      force_control_init_ = true;
+    }
+
+    double traj_duration = 3.0;
+
+    Eigen::Vector6d f_star;
+  
+    if (cur_time_ > position_control_init_time_ + traj_duration)
+    {
+      x_mode_init_ = arm.transform_;
+      position_control_init_time_ = cur_time_;
+
+      x_target_.linear() << 0.664068,    0.747251,  -0.0250978,
+                          0.746716,   -0.664542,  -0.0282643,
+                          -0.037799, 2.84703e-05,   -0.999285;
+      if (position_control_direction_ == 0)
+      {
+        x_target_.translation() << 0.5561, 0.20, 0.5902;
+        position_control_direction_ = 1;
+      }
+      else if (position_control_direction_ == 1)
+      {
+        x_target_.translation() << 0.5561, 0.00, 0.5902;
+        position_control_direction_ = 0;
+      }
+    }
+
     for (int i = 0; i < 3; i++)
     {
-        x_desired_.translation()(i) = dyros_math::cubic(cur_time_, mode_init_time_, mode_init_time_+traj_duration, x_mode_init_.translation()(i), x_target_.translation()(i), 0.0, 0.0);
-        x_dot_desired_(i) = dyros_math::cubicDot(cur_time_, mode_init_time_, mode_init_time_+traj_duration, x_mode_init_.translation()(i), x_target_.translation()(i), 0.0, 0.0);
+        x_desired_.translation()(i) = dyros_math::cubic(cur_time_, position_control_init_time_, position_control_init_time_+traj_duration, x_mode_init_.translation()(i), x_target_.translation()(i), 0.0, 0.0);
+        x_dot_desired_(i) = dyros_math::cubicDot(cur_time_, position_control_init_time_, position_control_init_time_+traj_duration, x_mode_init_.translation()(i), x_target_.translation()(i), 0.0, 0.0);
     }
     
-    x_desired_.linear() = dyros_math::rotationCubic(cur_time_, mode_init_time_, mode_init_time_+traj_duration, x_mode_init_.linear(), x_target_.linear()); 
-    x_dot_desired_.segment(3,3) = dyros_math::rotationCubicDot(cur_time_, mode_init_time_, mode_init_time_+traj_duration, x_mode_init_.linear(), x_target_.linear()); 
+    x_desired_.linear() = dyros_math::rotationCubic(cur_time_, position_control_init_time_, position_control_init_time_+traj_duration, x_mode_init_.linear(), x_target_.linear()); 
+    x_dot_desired_.segment(3,3) = dyros_math::rotationCubicDot(cur_time_, position_control_init_time_, position_control_init_time_+traj_duration, x_mode_init_.linear(), x_target_.linear()); 
 
     Eigen::Vector6d x_error;
     x_error.setZero();
@@ -644,7 +667,7 @@ bool ResidualActionServer::computeArmForce(ros::Time time, FrankaModelUpdater &a
     f_star = kp_task_*x_error +kv_task_*x_dot_error;
 
     // Force control z
-    f_d_z_ = cubic(cur_time_, mode_init_time_, mode_init_time_+traj_duration, estimated_ext_force_init_(2), -5.0, 0.0, 0.0);
+    f_d_z_ = cubic(cur_time_, force_control_init_time_, force_control_init_time_+traj_duration, estimated_ext_force_init_(2), -5.0, 0.0, 0.0);
 
     f_star(2) = 0.0;
     f_I_ = f_I_ + 1.0 * (f_d_z_ - estimated_ext_force_(2)) / 1000;

@@ -158,7 +158,10 @@ public:
   
   bool force_control_init_;
 
-  double mode_init_time_ = 0.0;
+  double force_control_init_time_ = 0.0;
+  double position_control_init_time_ = 0.0;
+
+  int position_control_direction_ = 0;
 
   double f_I_ = 0.0;
   double f_d_z_ = 0.0;
@@ -169,6 +172,6 @@ private:
   bool setGain(avatar_msgs::SetTrajectoryFollowerGain::Request  &req,
                  avatar_msgs::SetTrajectoryFollowerGain::Response &res);
 
-  int control_mode_ = RandomMotion;
-  // int control_mode_ = HybridControl;
+  // int control_mode_ = RandomMotion;
+  int control_mode_ = HybridControl;
 };
