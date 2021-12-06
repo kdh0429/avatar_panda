@@ -172,6 +172,6 @@ private:
   bool setGain(avatar_msgs::SetTrajectoryFollowerGain::Request  &req,
                  avatar_msgs::SetTrajectoryFollowerGain::Response &res);
 
-  // int control_mode_ = RandomMotion;
-  int control_mode_ = HybridControl;
+  int control_mode_ = RandomMotion;
+  // int control_mode_ = HybridControl;
 };
